@@ -1,12 +1,14 @@
 const express = require("express");
 
-const {upperStock, getStock, reserveStock, confirmReservation, releaseReservation} = require("../controllers/inventoryController");
+const {upperStock, getStock,getReservation, reserveStock, confirmReservation, releaseReservation} = require("../controllers/inventoryController");
 
 const router = express.Router();
 
 router.post("/stock", upperStock);
 
 router.get("/stock/:productId", getStock);
+
+router.get("/reservations/:orderId", getReservation);
 
 router.post("/reserve", reserveStock);
 

@@ -21,10 +21,13 @@ model Stock {
 // after a crash, which is exactly the gap we're trying to close.
 model Reservation {
   id         String   @id @default(uuid())
-  orderId    String   @unique // one reservation per order
+  orderId    String   
   productId  String
   quantity   Int
   status     String   @default("pending") // pending | confirmed | released
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  @@unique([orderId, productId])
+  @@index([orderId])
 }
