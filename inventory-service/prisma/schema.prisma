@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Stock {
+  id        String   @id @default(uuid())
+  productId String   @unique // matches Product._id from catalog-service (as a string)
+  available Int      @default(0) // stock genuinely free to sell
+  reserved  Int      @default(0) // stock held for in-progress orders, not yet confirmed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// A record of every reservation attempt — this IS the saga's audit trail.
+// Without this, you can't tell "was this order's stock ever reserved?"
+// after a crash, which is exactly the gap we're trying to close.
+model Reservation {
+  id         String   @id @default(uuid())
+  orderId    String   @unique // one reservation per order
+  productId  String
+  quantity   Int
+  status     String   @default("pending") // pending | confirmed | released
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

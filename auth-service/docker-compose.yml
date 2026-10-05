@@ -1,0 +1,32 @@
+services:
+  auth-service:
+    build: .
+    container_name: auth-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Inside Docker's network, the app reaches Postgres by container
+      # name "postgres", not "localhost" — this overrides the .env value
+      # just for the containerized run.
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/auth_db?schema=public
+    ports:
+      - "4001:4001"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: auth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auth_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - auth-pg-data:/var/lib/postgresql/data
+
+volumes:
+  auth-pg-data:

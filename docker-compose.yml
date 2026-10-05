@@ -1,0 +1,134 @@
+services:
+
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - catalog-service
+      - cart-service
+
+  # ---------- Auth ----------
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    restart: unless-stopped
+    env_file:
+      - ./auth-service/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@auth-postgres:5432/auth_db?schema=public
+    depends_on:
+      - auth-postgres
+
+  auth-postgres:
+    image: postgres:16-alpine
+    container_name: auth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auth_db
+    volumes:
+      - auth-pg-data:/var/lib/postgresql/data
+
+  # ---------- Catalog ----------
+  catalog-service:
+    build: ./catalog-service
+    container_name: catalog-service
+    restart: unless-stopped
+    env_file:
+      - ./catalog-service/.env
+    environment:
+      MONGO_URI: mongodb://catalog-mongo:27017/catalog_db
+    depends_on:
+      - catalog-mongo
+
+  catalog-mongo:
+    image: mongo:7
+    container_name: catalog-mongo
+    restart: unless-stopped
+    volumes:
+      - catalog-mongo-data:/data/db
+
+  # ---------- Cart ----------
+  cart-service:
+    build: ./cart-service
+    container_name: cart-service
+    restart: unless-stopped
+    env_file:
+      - ./cart-service/.env
+    environment:
+      REDIS_URL: redis://cart-redis:6379
+      CATALOG_SERVICE_URL: http://catalog-service:4002
+    depends_on:
+      - cart-redis
+      - catalog-service
+
+  cart-redis:
+    image: redis:7-alpine
+    container_name: cart-redis
+    restart: unless-stopped
+    volumes:
+      - cart-redis-data:/data
+
+    # ---------- Inventory ----------
+  inventory-service:
+    build: ./inventory-service
+    container_name: inventory-service
+    restart: unless-stopped
+    env_file:
+      - ./inventory-service/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@inventory-postgres:5432/inventory_db?schema=public
+    depends_on:
+      - inventory-postgres
+
+  inventory-postgres:
+    image: postgres:16-alpine
+    container_name: inventory-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inventory_db
+    volumes:
+      - inventory-pg-data:/var/lib/postgresql/data    
+
+
+
+    # ---------- Order ----------
+  order-service:
+    build: ./order-service
+    container_name: order-service
+    restart: unless-stopped
+    env_file:
+      - ./order-service/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@order-postgres:5432/order_db?schema=public
+      INVENTORY_SERVICE_URL: http://inventory-service:4004
+    depends_on:
+      - order-postgres
+      - inventory-service
+
+  order-postgres:
+    image: postgres:16-alpine
+    container_name: order-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: order_db
+    ports:
+      - "5434:5432" # exposed temporarily for running the migration locally
+    volumes:
+      - order-pg-data:/var/lib/postgresql/data    
+
+volumes:
+  auth-pg-data:
+  catalog-mongo-data:
+  cart-redis-data:
+  inventory-pg-data:
+  order-pg-data:

@@ -1,0 +1,25 @@
+services:
+  catalog-service:
+    build: .
+    container_name: catalog-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/catalog_db
+    ports:
+      - "4002:4002"
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:7
+    container_name: catalog-mongo
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - catalog-mongo-data:/data/db
+
+volumes:
+  catalog-mongo-data:

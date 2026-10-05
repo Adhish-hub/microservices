@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id         String      @id @default(uuid())
+  userId     String
+  status     String      @default("pending") // pending | confirmed | failed
+  totalPrice Float
+  items      OrderItem[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+// Denormalized, same principle as your monolith: store the product's
+// name/price AT THE TIME of the order, so the order stays accurate even
+// if catalog-service's price changes later — and so rendering an order
+// never requires calling catalog-service again.
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String
+  name      String
+  price     Float
+  quantity  Int
+}

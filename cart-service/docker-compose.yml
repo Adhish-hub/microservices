@@ -1,0 +1,32 @@
+services:
+  cart-service:
+    build: .
+    container_name: cart-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      # host.docker.internal lets this container reach catalog-service,
+      # which is running in a DIFFERENT docker-compose project (its own
+      # network) — this special DNS name routes back to your host
+      # machine, which can see catalog-service's exposed port 4002.
+      CATALOG_SERVICE_URL: http://host.docker.internal:4002
+    ports:
+      - "4003:4003"
+    depends_on:
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:7-alpine
+    container_name: cart-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - cart-redis-data:/data
+
+volumes:
+  cart-redis-data:
