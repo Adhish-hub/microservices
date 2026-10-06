@@ -14,6 +14,6 @@ router.post("/reserve", reserveStock);
 
 router.post("/confirm/:orderId", confirmReservation);
 
-router.post("/confirm/:orderId", releaseReservation);
+router.post("/release/:orderId", releaseReservation);
 
 module.exports = router;

@@ -2,6 +2,9 @@ require("dotenv").config();
 const express = require("express");
 const orderRoutes = require("./routes/orderRoutes");
 const errorMiddleware = require("./middlewares/errorMiddleware");
+const { startRecoveryWorker } = require("./services/recoveryService");
+
+
 
 const app = express();
 const PORT = process.env.PORT || 4005;
@@ -18,4 +21,7 @@ app.use(errorMiddleware);
 
 app.listen(PORT, () => {
   console.log(`order-service listening on port ${PORT}`);
+
+  // Start the stale-order recovery process.
+  startRecoveryWorker();
 });

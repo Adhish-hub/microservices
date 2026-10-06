@@ -137,7 +137,7 @@ async function reserveStock(req, res, next){
                 where: {orderId}
             });
 
-            if(existing.length < 0){
+            if(existing.length > 0){
                 return{alreadyExists: true, reservation: existing};
             }
 
@@ -266,7 +266,7 @@ async function releaseReservation(req, res, next){
 
                 await tx.reservation.update({
                     where: {id: row.id},
-                    data: {staus: "released"},
+                    data: {status: "released"},
                 });
             }
 

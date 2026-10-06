@@ -50,6 +50,8 @@ services:
     image: mongo:7
     container_name: catalog-mongo
     restart: unless-stopped
+    ports:
+    - "27018:27017"
     volumes:
       - catalog-mongo-data:/data/db
 
@@ -126,9 +128,44 @@ services:
     volumes:
       - order-pg-data:/var/lib/postgresql/data    
 
+
+   # ---------- Payment ----------
+  payment-service:
+    build: ./payment-service
+    container_name: payment-service
+    ports:
+    - "4006:4006"
+    restart: unless-stopped
+    env_file:
+      - ./payment-service/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@payment-postgres:5432/payment_db?schema=public
+      ORDER_SERVICE_URL: http://order-service:4005
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
+    depends_on:
+      - payment-postgres
+      - order-service
+
+  payment-postgres:
+    image: postgres:16-alpine
+    container_name: payment-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payment_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - payment-pg-data:/var/lib/postgresql/data
+    
+
 volumes:
   auth-pg-data:
   catalog-mongo-data:
   cart-redis-data:
   inventory-pg-data:
   order-pg-data:
+  payment-pg-data:
