@@ -1,10 +1,9 @@
-const { randomUUID } = require("crypto");
-
 const prisma = require("../config/prisma");
 
 const inventoryService = require("../services/inventoryService");
 const catalogService = require("../services/catalogService");
 
+const { createOutboxEvent } = require("../services/outboxService");
 
 const {
   handlePaymentFailure,
@@ -12,40 +11,28 @@ const {
 } = require("../services/paymentOrderService");
 
 async function createOrder(req, res, next) {
-  let orderId = null;
-
   try {
     const { userId, items } = req.body;
 
-    // ---------------------------------------------------------
-    // 1. Validate request
-    // ---------------------------------------------------------
-
-    if (!userId || !Array.isArray(items) || items.length < 1) {
+    if (!userId) {
       return res.status(400).json({
-        message: "userId and at least 1 item are required.",
+        message: "userId is required.",
       });
     }
 
-    // ---------------------------------------------------------
-    // 2. Get product information from Catalog Service
-    // ---------------------------------------------------------
-    // The client is NOT trusted for name/price.
-    // Catalog Service is the source of truth.
-    // ---------------------------------------------------------
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        message: "At least one item is required.",
+      });
+    }
 
     const orderItems = [];
+    let totalPrice = 0;
 
     for (const item of items) {
-      if (
-        !item ||
-        !item.productId ||
-        !Number.isInteger(item.quantity) ||
-        item.quantity < 1
-      ) {
+      if (!item.productId || !item.quantity || item.quantity <= 0) {
         return res.status(400).json({
-          message:
-            "Every item needs a productId and a positive integer quantity.",
+          message: "Each item must contain a valid productId and quantity.",
         });
       }
 
@@ -57,108 +44,94 @@ async function createOrder(req, res, next) {
         });
       }
 
+      const quantity = Number(item.quantity);
+      const price = Number(product.price);
+
       orderItems.push({
-        productId: product._id || product.id || item.productId,
+        productId: product._id || product.id,
         name: product.name,
-        price: product.price,
-        quantity: item.quantity,
+        price,
+        quantity,
       });
+
+      totalPrice += price * quantity;
     }
 
-    // ---------------------------------------------------------
-    // 3. Calculate total from Catalog prices
-    // ---------------------------------------------------------
-
-    const totalPrice = orderItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0,
-    );
-
-    // ---------------------------------------------------------
-    // 4. Generate Order ID
-    // ---------------------------------------------------------
-
-    orderId = randomUUID();
-
-    // ---------------------------------------------------------
-    // 5. Create order as PENDING
-    // ---------------------------------------------------------
-    // IMPORTANT:
-    //
-    // The order MUST remain pending until payment succeeds.
-    // ---------------------------------------------------------
-
-    const order = await prisma.order.create({
-      data: {
-        id: orderId,
-        userId,
-        totalPrice,
-        status: "pending",
-        items: {
-          create: orderItems.map((item) => ({
-            productId: item.productId,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-          })),
+    const order = await prisma.$transaction(async (tx) => {
+      const createdOrder = await tx.order.create({
+        data: {
+          userId,
+          totalPrice,
+          status: "pending",
+          items: {
+            create: orderItems.map((item) => ({
+              productId: item.productId,
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity,
+            })),
+          },
         },
-      },
-      include: {
-        items: true,
-      },
+        include: {
+          items: true,
+        },
+      });
+
+      await createOutboxEvent(tx, {
+        eventType: "order.created",
+        aggregateType: "Order",
+        aggregateId: createdOrder.id,
+        payload: {
+          orderId: createdOrder.id,
+          userId: createdOrder.userId,
+          totalPrice: createdOrder.totalPrice,
+          status: createdOrder.status,
+          items: createdOrder.items,
+        },
+      });
+
+      return createdOrder;
     });
 
-    // ---------------------------------------------------------
-    // 6. Reserve inventory
-    // ---------------------------------------------------------
-    // Inventory is reserved, but NOT confirmed.
-    //
-    // The reservation remains pending until payment succeeds.
-    // ---------------------------------------------------------
-
     try {
-      await inventoryService.reserveStock(
-        orderId,
-        orderItems.map((item) => ({
+      for (const item of order.items) {
+        await inventoryService.reserveInventory({
+          orderId: order.id,
           productId: item.productId,
           quantity: item.quantity,
-        })),
-      );
+        });
+      }
     } catch (inventoryError) {
-      // Inventory rejected the reservation.
-      // Mark the order as failed.
+      await prisma.$transaction(async (tx) => {
+        const failedOrder = await tx.order.update({
+          where: {
+            id: order.id,
+          },
+          data: {
+            status: "failed",
+          },
+          include: {
+            items: true,
+          },
+        });
 
-      await prisma.order.update({
-        where: {
-          id: orderId,
-        },
-        data: {
-          status: "failed",
-        },
+        await createOutboxEvent(tx, {
+          eventType: "order.failed",
+          aggregateType: "Order",
+          aggregateId: failedOrder.id,
+          payload: {
+            orderId: failedOrder.id,
+            userId: failedOrder.userId,
+            totalPrice: failedOrder.totalPrice,
+            status: failedOrder.status,
+            reason: "inventory_reservation_failed",
+            items: failedOrder.items,
+          },
+        });
       });
 
       throw inventoryError;
     }
-
-    // ---------------------------------------------------------
-    // 7. DO NOT CONFIRM INVENTORY HERE
-    // ---------------------------------------------------------
-    //
-    // Payment Service is now responsible for deciding whether
-    // the reservation should be confirmed or released.
-    //
-    // Flow:
-    //
-    // pending order
-    //      +
-    // reserved inventory
-    //      ↓
-    // Payment Service
-    //      ↓
-    // payment success → confirm reservation
-    // payment failure → release reservation
-    //
-    // ---------------------------------------------------------
 
     return res.status(201).json(order);
   } catch (err) {

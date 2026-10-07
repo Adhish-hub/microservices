@@ -5,6 +5,9 @@ const express = require("express");
 const orderRoutes = require("./routes/orderRoutes");
 const errorMiddleware = require("./middlewares/errorMiddleware");
 
+const { connectRedis } = require("./config/redis");
+const { startOutboxPublisher } = require("./services/outboxPublisher");
+
 const app = express();
 
 const PORT = process.env.PORT || 4005;
@@ -22,6 +25,20 @@ app.get("/health", (req, res) =>
 
 app.use(errorMiddleware);
 
-app.listen(PORT, () => {
-  console.log(`order-service listening on port ${PORT}`);
-});
+async function startServer() {
+  try {
+    await connectRedis();
+
+    startOutboxPublisher();
+
+    app.listen(PORT, () => {
+      console.log(`order-service listening on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start order-service:", error);
+
+    process.exit(1);
+  }
+}
+
+startServer();

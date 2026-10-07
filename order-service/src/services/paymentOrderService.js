@@ -5,6 +5,8 @@ const {
   releaseReservation,
 } = require("./inventoryService");
 
+const { createOutboxEvent } = require("./outboxService");
+
 async function handlePaymentSuccess(orderId) {
   const order = await prisma.order.findUnique({
     where: {
@@ -31,16 +33,33 @@ async function handlePaymentSuccess(orderId) {
 
   await confirmReservation(orderId);
 
-  const updatedOrder = await prisma.order.update({
-    where: {
-      id: orderId,
-    },
-    data: {
-      status: "confirmed",
-    },
-    include: {
-      items: true,
-    },
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    const confirmedOrder = await tx.order.update({
+      where: {
+        id: orderId,
+      },
+      data: {
+        status: "confirmed",
+      },
+      include: {
+        items: true,
+      },
+    });
+
+    await createOutboxEvent(tx, {
+      eventType: "order.confirmed",
+      aggregateType: "Order",
+      aggregateId: confirmedOrder.id,
+      payload: {
+        orderId: confirmedOrder.id,
+        userId: confirmedOrder.userId,
+        totalPrice: confirmedOrder.totalPrice,
+        status: confirmedOrder.status,
+        items: confirmedOrder.items,
+      },
+    });
+
+    return confirmedOrder;
   });
 
   return updatedOrder;
@@ -72,16 +91,34 @@ async function handlePaymentFailure(orderId) {
 
   await releaseReservation(orderId);
 
-  const updatedOrder = await prisma.order.update({
-    where: {
-      id: orderId,
-    },
-    data: {
-      status: "failed",
-    },
-    include: {
-      items: true,
-    },
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    const failedOrder = await tx.order.update({
+      where: {
+        id: orderId,
+      },
+      data: {
+        status: "failed",
+      },
+      include: {
+        items: true,
+      },
+    });
+
+    await createOutboxEvent(tx, {
+      eventType: "order.failed",
+      aggregateType: "Order",
+      aggregateId: failedOrder.id,
+      payload: {
+        orderId: failedOrder.id,
+        userId: failedOrder.userId,
+        totalPrice: failedOrder.totalPrice,
+        status: failedOrder.status,
+        reason: "payment_failed",
+        items: failedOrder.items,
+      },
+    });
+
+    return failedOrder;
   });
 
   return updatedOrder;

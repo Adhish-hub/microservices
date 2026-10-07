@@ -116,10 +116,12 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@order-postgres:5432/order_db?schema=public
       INVENTORY_SERVICE_URL: http://inventory-service:4004
       CATALOG_SERVICE_URL: http://catalog-service:4002
+      REDIS_URL: redis://event-redis:6379
     depends_on:
       - order-postgres
       - inventory-service
       - catalog-service
+      - event-redis
 
   order-postgres:
     image: postgres:16-alpine
@@ -166,6 +168,49 @@ services:
       - "5435:5432"
     volumes:
       - payment-pg-data:/var/lib/postgresql/data
+
+  event-redis:
+    image: redis:7-alpine
+    container_name: event-redis
+    restart: unless-stopped
+    volumes:
+      - event-redis-data:/data 
+
+
+    # ---------- Notification ----------
+  notification-service:
+    build: ./notification-service
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "4007:4007"
+    env_file:
+      - ./notification-service/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@notification-postgres:5432/notification_db?schema=public
+      REDIS_URL: redis://event-redis:6379
+      EVENT_STREAM: order-events
+      CONSUMER_GROUP: notification-group
+      CONSUMER_NAME: notification-worker-1
+      RETRY_STREAM: order-events-retry
+      FAILED_STREAM: order-events-failed
+      MAX_RETRIES: "3"
+    depends_on:
+      - notification-postgres
+      - event-redis
+
+  notification-postgres:
+    image: postgres:16-alpine
+    container_name: notification-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: notification_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - notification-pg-data:/var/lib/postgresql/data     
     
 
 volumes:
@@ -175,3 +220,5 @@ volumes:
   inventory-pg-data:
   order-pg-data:
   payment-pg-data:
+  event-redis-data:
+  notification-pg-data:
