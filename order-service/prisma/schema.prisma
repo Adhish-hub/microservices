@@ -30,3 +30,19 @@ model OrderItem {
   price     Float
   quantity  Int
 }
+
+model OutboxEvent {
+  id            String    @id @default(uuid())
+  eventType     String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  status        String    @default("pending")
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now())
+  publishedAt   DateTime?
+
+  @@index([status])
+  @@index([aggregateId])
+  @@index([eventType])
+}
