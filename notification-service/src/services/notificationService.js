@@ -30,16 +30,17 @@ async function createNotification(event) {
     const notification = await prisma.notification.create({
       data: {
         eventId: event.eventId,
-        userId: event.userId,
+        userId: payload.userId,
         type: event.eventType,
         message,
       },
     });
 
     console.log(`Notification created for event ${event.eventId}`);
+
     return notification;
   } catch (error) {
-    if ((error.code = "P2002")) {
+    if (error.code === "P2002") {
       console.log(
         `Event ${event.eventId} already processed. Skipping duplicate.`,
       );
@@ -62,7 +63,21 @@ async function getUserNotifications(userId) {
   });
 }
 
-async function markNotificationAsRead(id) {
+async function markNotificationAsRead(id, userId) {
+
+  const notification = await prisma.notification.findFirst({
+    where: {
+      id,
+      userId,
+    },
+  });
+
+  if(!notification){
+    const error = new Error("Notification not found.");
+    error.status = 404;
+    throw error;
+  }
+
   return prisma.notification.update({
     where: {
       id,

@@ -12,11 +12,13 @@ const {
 
 async function createOrder(req, res, next) {
   try {
-    const { userId, items } = req.body;
+    const { items } = req.body;
+
+    const userId = req.headers["x-user-id"];
 
     if (!userId) {
-      return res.status(400).json({
-        message: "userId is required.",
+      return res.status(401).json({
+        message: "Authenticated userId is missing.",
       });
     }
 
@@ -57,12 +59,17 @@ async function createOrder(req, res, next) {
       totalPrice += price * quantity;
     }
 
+    /*
+     * Create the order and its outbox event
+     * in the same database transaction.
+     */
     const order = await prisma.$transaction(async (tx) => {
       const createdOrder = await tx.order.create({
         data: {
           userId,
           totalPrice,
           status: "pending",
+
           items: {
             create: orderItems.map((item) => ({
               productId: item.productId,
@@ -72,6 +79,7 @@ async function createOrder(req, res, next) {
             })),
           },
         },
+
         include: {
           items: true,
         },
@@ -81,6 +89,7 @@ async function createOrder(req, res, next) {
         eventType: "order.created",
         aggregateType: "Order",
         aggregateId: createdOrder.id,
+
         payload: {
           orderId: createdOrder.id,
           userId: createdOrder.userId,
@@ -93,23 +102,34 @@ async function createOrder(req, res, next) {
       return createdOrder;
     });
 
+    /*
+     * Reserve inventory for all order items atomically.
+     */
     try {
-      for (const item of order.items) {
-        await inventoryService.reserveInventory({
-          orderId: order.id,
+      await inventoryService.reserveStock(
+        order.id,
+        order.items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
-        });
-      }
+        })),
+      );
     } catch (inventoryError) {
+      /*
+       * Inventory reservation failed.
+       *
+       * Mark the order as failed and create an
+       * order.failed outbox event.
+       */
       await prisma.$transaction(async (tx) => {
         const failedOrder = await tx.order.update({
           where: {
             id: order.id,
           },
+
           data: {
             status: "failed",
           },
+
           include: {
             items: true,
           },
@@ -119,6 +139,7 @@ async function createOrder(req, res, next) {
           eventType: "order.failed",
           aggregateType: "Order",
           aggregateId: failedOrder.id,
+
           payload: {
             orderId: failedOrder.id,
             userId: failedOrder.userId,
@@ -141,9 +162,18 @@ async function createOrder(req, res, next) {
 
 async function getOrder(req, res, next) {
   try {
-    const order = await prisma.order.findUnique({
+    const userId = req.headers["x-user-id"];
+
+    if (!userId) {
+      return res.status(401).json({
+        message: "Authenticated user ID is missing.",
+      });
+    }
+
+    const order = await prisma.order.findFirst({
       where: {
         id: req.params.id,
+        userId,
       },
       include: {
         items: true,

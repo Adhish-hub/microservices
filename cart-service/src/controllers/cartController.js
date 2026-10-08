@@ -4,13 +4,27 @@ const catalogService = require("../services/catalogService");
 
 const CART_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days of inactivity before a cart expires
 
+
+function getAuthenticatedUserId(req) {
+  const userId = req.headers["x-user-id"];
+
+  if (!userId) {
+    const error = new Error("Authenticated user ID is missing.");
+    error.status = 401;
+    throw error;
+  }
+
+  return userId;
+}
+
+
 function cartKey(userId){
     return `cart:${userId}`;
 }
 
 async function getCart(req, res, next){
     try{
-            const { userId } = req.params;
+            const userId = getAuthenticatedUserId(req);
             const raw = await redisClient.get(cartKey(userId));
             const cart = raw ? JSON.parse(raw) : { items: [] };
             res.status(200).json(cart);
@@ -22,7 +36,7 @@ async function getCart(req, res, next){
 
 async function addItem(req, res, next){
     try{
-        const {userId} = req.params;
+        const userId = getAuthenticatedUserId(req);
         const {productId, quantity} = req.body;
 
         if(!productId || !quantity || quantity < 1){
@@ -69,7 +83,8 @@ async function addItem(req, res, next){
 
 async function removeItem(req, res, next){
     try{
-        const {userId, productId} = req.params;
+        const userId = getAuthenticatedUserId(req);
+        const {productId} = req.params;
         const raw = await redisClient.get(cartKey(userId));
         const cart = raw ? JSON.parse(raw) : {items: []};
 
@@ -86,7 +101,7 @@ async function removeItem(req, res, next){
 
 async function clearCart(req, res, next){
     try{
-        const {userId} = req.params;
+        const userId = getAuthenticatedUserId(req);
         await redisClient.del(cartKey(userId));
         res.status(200).json({
             message: "Cart cleared."

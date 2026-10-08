@@ -2,13 +2,19 @@ const notificationService = require("../services/notificationService");
 
 async function getNotifications(req, res, next){
     try{
-        const notifications = await notificationService.getUserNotifications(
-            req.params.userId,
-        );
+        const userId = req.headers["x-user-id"];
+
+        if(!userId){
+            return res.status(401).json({
+                message: "Authenticated user ID is missing."
+            });
+        }
+
+        const notifications = await notificationService.getUserNotifications(userId);
 
         res.status(200).json({
             notifications,
-        });
+        })
     }catch(error){
         next(error);
     }
@@ -16,8 +22,17 @@ async function getNotifications(req, res, next){
 
 async function markAsRead(req, res, next){
     try{
-        const notification = await notificationService.markNotificationsAsRead(
+        const userId = req.headers["x-user-id"];
+
+        if(!userId){
+            return res.status(401).json({
+                message: "Authenticated user ID is missing.",
+            });
+        }
+
+        const notification = await notificationService.markNotificationAsRead(
             req.params.id,
+            userId,
         );
 
         res.status(200).json({
@@ -30,13 +45,19 @@ async function markAsRead(req, res, next){
 
 async function markAllAsRead(req, res, next){
     try{
-        const result = await notificationService.markAllNotificationsAsRead(
-            req.params.userId,
-        );
+        const userId = req.headers["x-user-id"];
+
+        if(!userId){
+            return res.staus(401).json({
+                message: "Authenticated user ID is missing.",
+            });
+        }
+
+        const result = await notificationService.markAllNotificationsAsRead(userId);
 
         res.status(200).json({
             message: "All notifications mark as read.",
-            count: result.count,
+            count: result.count, 
         });
     }catch(error){
         next(error);

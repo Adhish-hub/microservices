@@ -6,10 +6,14 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    env_file:
+      - ./gateway/.env  
     depends_on:
       - auth-service
       - catalog-service
       - cart-service
+      - inventory-service
+      - order-service
 
   # ---------- Auth ----------
   auth-service:
