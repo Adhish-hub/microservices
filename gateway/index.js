@@ -3,28 +3,30 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const { createProxyMiddleware } = require("http-proxy-middleware");
 
 const authMiddleware = require("./middlewares/authMiddleware");
 const authorizeRoles = require("./middlewares/roleMiddleware");
 const { apiRateLimiter } = require("./middlewares/rateLimitMiddleware");
-const errorMiddleware = require("./middlewares/errorMiddleware");
 
 const identityMiddleware = require("./middlewares/identityMiddleware");
 
 const { requireParamOwnership } = require("./middlewares/ownershipMiddleware");
 
+const { createResilientProxy } = require("./middlewares/resilientProxy");
+
+const errorMiddleware = require("./middlewares/errorMiddleware");
+
 const app = express();
 
 const PORT = process.env.PORT || 8080;
 
-app.disable("x-powered-by");
-
 /*
 |--------------------------------------------------------------------------
-| Security Middleware
+| Security
 |--------------------------------------------------------------------------
 */
+
+app.disable("x-powered-by");
 
 app.use(
   helmet({
@@ -41,98 +43,89 @@ app.use(
   }),
 );
 
-// app.use(express.json());
+/*
+ * IMPORTANT:
+ *
+ * Do NOT use express.json() here.
+ *
+ * http-proxy-middleware needs access to the original request body.
+ */
 
 app.use(apiRateLimiter);
 
 /*
 |--------------------------------------------------------------------------
-| Public Authentication Routes
+| Public Authentication
 |--------------------------------------------------------------------------
 */
 
-app.use(
-  "/api/auth",
-  createProxyMiddleware({
-    target: "http://auth-service:4001",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/": "/api/auth/",
-    },
-  }),
-);
+const [authCircuit, authProxy] = createResilientProxy({
+  target: "http://auth-service:4001",
+  timeout: 5000,
+  failureThreshold: 5,
+  resetTimeout: 15000,
+  pathRewrite: {
+    "^/": "/api/auth/",
+  },
+});
+
+app.use("/api/auth", authCircuit, authProxy);
 
 /*
 |--------------------------------------------------------------------------
-| Public Catalog Routes
-|--------------------------------------------------------------------------
-|
-| GET /api/products
-| GET /api/products/:id
-|
-| Product creation/modification is protected below.
+| Public Catalog
 |--------------------------------------------------------------------------
 */
 
-app.get(
-  "/api/products",
-  createProxyMiddleware({
-    target: "http://catalog-service:4002",
-    changeOrigin: true,
-  }),
-);
+const [catalogPublicCircuit, catalogPublicProxy] = createResilientProxy({
+  target: "http://catalog-service:4002",
+  timeout: 5000,
+  failureThreshold: 5,
+  resetTimeout: 15000,
+});
 
-app.get(
-  "/api/products/:id",
-  createProxyMiddleware({
-    target: "http://catalog-service:4002",
-    changeOrigin: true,
-  }),
-);
+app.get("/api/products", catalogPublicCircuit, catalogPublicProxy);
+
+app.get("/api/products/:id", catalogPublicCircuit, catalogPublicProxy);
 
 /*
 |--------------------------------------------------------------------------
-| Seller/Admin Catalog Operations
+| Protected Catalog Operations
 |--------------------------------------------------------------------------
 */
+
+const [catalogProtectedCircuit, catalogProtectedProxy] = createResilientProxy({
+  target: "http://catalog-service:4002",
+  timeout: 5000,
+  failureThreshold: 5,
+  resetTimeout: 15000,
+  pathRewrite: {
+    "^/": "/api/products/",
+  },
+});
 
 app.post(
   "/api/products",
   authMiddleware,
   authorizeRoles("seller", "admin"),
-  createProxyMiddleware({
-    target: "http://catalog-service:4002",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/": "/api/products/",
-    },
-  }),
+  catalogProtectedCircuit,
+  catalogProtectedProxy,
 );
 
 app.put(
   "/api/products/:id",
   authMiddleware,
   authorizeRoles("seller", "admin"),
-  createProxyMiddleware({
-    target: "http://catalog-service:4002",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/": "/api/products/",
-    },
-  }),
+  catalogProtectedCircuit,
+  catalogProtectedProxy,
 );
 
 app.delete(
   "/api/products/:id",
   authMiddleware,
   authorizeRoles("admin"),
-  createProxyMiddleware({
-    target: "http://catalog-service:4002",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/": "/api/products/",
-    },
-  }),
+  catalogProtectedCircuit,
+  catalogProtectedProxy,
 );
 
 /*
@@ -141,18 +134,23 @@ app.delete(
 |--------------------------------------------------------------------------
 */
 
+const [cartCircuit, cartProxy] = createResilientProxy({
+  target: "http://cart-service:4003",
+  timeout: 5000,
+  failureThreshold: 5,
+  resetTimeout: 15000,
+  pathRewrite: {
+    "^/": "/api/cart/",
+  },
+});
+
 app.use(
   "/api/cart/:userId",
   authMiddleware,
   identityMiddleware,
   requireParamOwnership("userId"),
-  createProxyMiddleware({
-    target: "http://cart-service:4003",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/": "/api/cart/",
-    },
-  }),
+  cartCircuit,
+  cartProxy,
 );
 
 /*
@@ -161,17 +159,22 @@ app.use(
 |--------------------------------------------------------------------------
 */
 
+const [orderCircuit, orderProxy] = createResilientProxy({
+  target: "http://order-service:4005",
+  timeout: 10000,
+  failureThreshold: 5,
+  resetTimeout: 15000,
+  pathRewrite: {
+    "^/": "/api/orders/",
+  },
+});
+
 app.use(
   "/api/orders",
   authMiddleware,
   identityMiddleware,
-  createProxyMiddleware({
-    target: "http://order-service:4005",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/": "/api/orders/",
-    },
-  }),
+  orderCircuit,
+  orderProxy,
 );
 
 /*
@@ -180,38 +183,51 @@ app.use(
 |--------------------------------------------------------------------------
 */
 
+const [notificationCircuit, notificationProxy] = createResilientProxy({
+  target: "http://notification-service:4007",
+  timeout: 5000,
+  failureThreshold: 5,
+  resetTimeout: 15000,
+  pathRewrite: {
+    "^/": "/api/notifications/",
+  },
+});
+
 app.use(
   "/api/notifications",
   authMiddleware,
   identityMiddleware,
-  createProxyMiddleware({
-    target: "http://notification-service:4007",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/": "/api/notifications/",
-    },
-  }),
+  notificationCircuit,
+  notificationProxy,
 );
 
+/*
+|--------------------------------------------------------------------------
+| Payments
+|--------------------------------------------------------------------------
+*/
+
+const [paymentCircuit, paymentProxy] = createResilientProxy({
+  target: "http://payment-service:4006",
+  timeout: 10000,
+  failureThreshold: 5,
+  resetTimeout: 15000,
+  pathRewrite: {
+    "^/": "/api/payments/",
+  },
+});
 
 app.use(
   "/api/payments",
   authMiddleware,
   identityMiddleware,
-  createProxyMiddleware({
-    target: "http://payment-service:4006",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/": "/api/payments/",
-    },
-  }),
+  paymentCircuit,
+  paymentProxy,
 );
-
-
 
 /*
 |--------------------------------------------------------------------------
-| Health
+| Gateway Health
 |--------------------------------------------------------------------------
 */
 
@@ -233,8 +249,3 @@ app.use(errorMiddleware);
 app.listen(PORT, () => {
   console.log(`Gateway listening on port ${PORT}`);
 });
-
-
-
-//Email: paymenttest@example.com
-//Password: Password@123

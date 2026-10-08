@@ -8,6 +8,8 @@ const errorMiddleware = require("./middlewares/errorMiddleware");
 const { connectRedis } = require("./config/redis");
 const { startOutboxPublisher } = require("./services/outboxPublisher");
 
+const { startRecoveryWorker } = require("./services/recoveryService");
+
 const app = express();
 
 const PORT = process.env.PORT || 4005;
@@ -29,7 +31,18 @@ async function startServer() {
   try {
     await connectRedis();
 
+    /*
+     * Reliable event publishing.
+     */
+
     startOutboxPublisher();
+
+    /*
+     * Recover orders that were interrupted by
+     * crashes, timeouts, or service failures.
+     */
+
+    startRecoveryWorker()
 
     app.listen(PORT, () => {
       console.log(`order-service listening on port ${PORT}`);

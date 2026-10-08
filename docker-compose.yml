@@ -15,6 +15,19 @@ services:
       - inventory-service
       - order-service
 
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:8080/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s  
+
   # ---------- Auth ----------
   auth-service:
     build: ./auth-service
@@ -50,6 +63,19 @@ services:
     depends_on:
       - catalog-mongo
 
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:4002/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s  
+
   catalog-mongo:
     image: mongo:7
     container_name: catalog-mongo
@@ -73,6 +99,19 @@ services:
       - cart-redis
       - catalog-service
 
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:4003/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s  
+
   cart-redis:
     image: redis:7-alpine
     container_name: cart-redis
@@ -93,6 +132,19 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@inventory-postgres:5432/inventory_db?schema=public
     depends_on:
       - inventory-postgres
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:4004/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s  
 
   inventory-postgres:
     image: postgres:16-alpine
@@ -127,6 +179,19 @@ services:
       - catalog-service
       - event-redis
 
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:4005/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s  
+
   order-postgres:
     image: postgres:16-alpine
     container_name: order-postgres
@@ -159,6 +224,19 @@ services:
     depends_on:
       - payment-postgres
       - order-service
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:4006/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s  
 
   payment-postgres:
     image: postgres:16-alpine
@@ -202,6 +280,19 @@ services:
     depends_on:
       - notification-postgres
       - event-redis
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:4007/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s  
 
   notification-postgres:
     image: postgres:16-alpine

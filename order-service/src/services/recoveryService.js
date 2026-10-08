@@ -1,10 +1,14 @@
 const prisma = require("../config/prisma");
-const { settleStaleOrder } = require("./orderSagaService");
+const { settleStaleOrder } = require("./sagaHelpers");
 
 // How old an order must be before we consider it stale.
 //
 // Development default: 1 minute.
 // In production you would probably use something larger.
+
+const { createOutboxEvent } = require("./outboxService");
+
+
 const STALE_ORDER_MINUTES = Number(process.env.STALE_ORDER_MINUTES || 1);
 
 // How often the recovery process runs.
@@ -51,32 +55,109 @@ async function recoverStaleOrders() {
 
         const result = await settleStaleOrder(order.id);
 
+          /*
+         * Inventory confirms that there is no active reservation.
+         *
+         * Therefore the order failed.
+         */
         if (result === "failed") {
-          await prisma.order.update({
-            where: {
-              id: order.id,
-            },
-            data: {
-              status: "failed",
-            },
+          await prisma.$transaction(async (tx) => {
+            const failedOrder = await tx.order.update({
+              where: {
+                id: order.id,
+              },
+
+              data: {
+                status: "failed",
+              },
+
+              include: {
+                items: true,
+              },
+            });
+
+            /*
+             * IMPORTANT:
+             *
+             * Recovery-generated state changes must also
+             * produce events.
+             */
+            await createOutboxEvent(tx, {
+              eventType: "order.failed",
+              aggregateType: "Order",
+              aggregateId: failedOrder.id,
+
+              payload: {
+                orderId: failedOrder.id,
+                userId: failedOrder.userId,
+                totalPrice: failedOrder.totalPrice,
+                status: failedOrder.status,
+                reason: "stale_order_recovery",
+                items: failedOrder.items,
+              },
+            });
           });
 
-          console.log(`Order ${order.id} marked as failed.`);
+          console.log(
+            `Order ${order.id} marked as failed by recovery.`,
+          );
+
+          continue;
         }
+
+        /*
+         * Inventory says the reservation was already confirmed.
+         *
+         * That means payment/order completion happened,
+         * but Order Service lost its final database update.
+         *
+         * We therefore roll FORWARD to confirmed.
+         */
 
         if (result === "confirmed") {
-          await prisma.order.update({
-            where: {
-              id: order.id,
-            },
-            data: {
-              status: "confirmed",
-            },
+          await prisma.$transaction(async (tx) => {
+            const confirmedOrder = await tx.order.update({
+              where: {
+                id: order.id,
+              },
+
+              data: {
+                status: "confirmed",
+              },
+
+              include: {
+                items: true,
+              },
+            });
+
+            await createOutboxEvent(tx, {
+              eventType: "order.confirmed",
+              aggregateType: "Order",
+              aggregateId: confirmedOrder.id,
+
+              payload: {
+                orderId: confirmedOrder.id,
+                userId: confirmedOrder.userId,
+                totalPrice: confirmedOrder.totalPrice,
+                status: confirmedOrder.status,
+                items: confirmedOrder.items,
+              },
+            });
           });
 
-          console.log(`Order ${order.id} marked as confirmed.`);
+          console.log(
+            `Order ${order.id} marked as confirmed by recovery.`,
+          );
+
+          continue;
         }
 
+        /*
+         * Inventory could not be reached.
+         *
+         * Leave the order pending so the next recovery
+         * cycle can try again.
+         */
         if (result === "retry") {
           console.log(
             `Order ${order.id} could not be recovered. Will retry later.`,
@@ -107,10 +188,22 @@ function startRecoveryWorker() {
   );
 
   // Run once immediately when the service starts.
-  recoverStaleOrders();
+  recoverStaleOrders().catch((error) => {
+    console.error(
+      "Initial order recovery failed:",
+      error,
+    );
+  });
 
   // Then continue periodically.
-  setInterval(recoverStaleOrders, RECOVERY_INTERVAL_MS);
+  setInterval(() => {
+    recoverStaleOrders().catch((error) => {
+      console.error(
+        "Order recovery worker error:",
+        error,
+      );
+    });
+  }, RECOVERY_INTERVAL_MS);
 }
 
 module.exports = {
