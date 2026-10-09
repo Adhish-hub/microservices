@@ -1,10 +1,30 @@
-
+# dependencies & build output
 node_modules
+npm-debug.log*
+coverage
+
+# secrets: a real .env never goes into an image (.env.example is fine)
 .env
 .env.*
 !.env.example
+
+# VCS, editor and AI-tooling folders
 .git
 .gitignore
-npm-debug.log*
-coverage
+.vscode
+.idea
+.windsurf
+.claude
+.agents
+skills-lock.json
+
+# tests and docs are not needed at runtime
 tests
+**/*.test.js
+jest.config.*
+*.md
+
+# docker files themselves
+Dockerfile
+.dockerignore
+docker-compose*.yml

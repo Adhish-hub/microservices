@@ -1,323 +1,3 @@
-# services:
-
-#   gateway:
-#     build: ./gateway
-#     container_name: gateway
-#     restart: unless-stopped
-#     ports:
-#       - "8080:8080"
-#     env_file:
-#       - ./gateway/.env  
-#     depends_on:
-#       - auth-service
-#       - catalog-service
-#       - cart-service
-#       - inventory-service
-#       - order-service
-
-#     healthcheck:
-#       test:
-#         [
-#           "CMD",
-#           "node",
-#           "-e",
-#           "require('http').get('http://localhost:8080/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-#         ]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#       start_period: 10s  
-
-#   # ---------- Auth ----------
-#   auth-service:
-#     build: ./auth-service
-#     container_name: auth-service
-#     restart: unless-stopped
-#     env_file:
-#       - ./auth-service/.env
-#     environment:
-#       DATABASE_URL: postgresql://postgres:postgres@auth-postgres:5432/auth_db?schema=public
-#     depends_on:
-#       - auth-postgres
-
-#   auth-postgres:
-#     image: postgres:16-alpine
-#     container_name: auth-postgres
-#     restart: unless-stopped
-#     environment:
-#       POSTGRES_USER: postgres
-#       POSTGRES_PASSWORD: postgres
-#       POSTGRES_DB: auth_db
-#     volumes:
-#       - auth-pg-data:/var/lib/postgresql/data
-
-#   # ---------- Catalog ----------
-#   catalog-service:
-#     build: ./catalog-service
-#     container_name: catalog-service
-#     restart: unless-stopped
-#     env_file:
-#       - ./catalog-service/.env
-#     environment:
-#       MONGO_URI: mongodb://catalog-mongo:27017/catalog_db
-#     depends_on:
-#       - catalog-mongo
-
-#     healthcheck:
-#       test:
-#         [
-#           "CMD",
-#           "node",
-#           "-e",
-#           "require('http').get('http://localhost:4002/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-#         ]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#       start_period: 10s  
-
-#   catalog-mongo:
-#     image: mongo:7
-#     container_name: catalog-mongo
-#     restart: unless-stopped
-#     ports:
-#     - "27018:27017"
-#     volumes:
-#       - catalog-mongo-data:/data/db
-
-#   # ---------- Cart ----------
-#   cart-service:
-#     build: ./cart-service
-#     container_name: cart-service
-#     restart: unless-stopped
-#     env_file:
-#       - ./cart-service/.env
-#     environment:
-#       REDIS_URL: redis://cart-redis:6379
-#       CATALOG_SERVICE_URL: http://catalog-service:4002
-#     depends_on:
-#       - cart-redis
-#       - catalog-service
-
-#     healthcheck:
-#       test:
-#         [
-#           "CMD",
-#           "node",
-#           "-e",
-#           "require('http').get('http://localhost:4003/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-#         ]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#       start_period: 10s  
-
-#   cart-redis:
-#     image: redis:7-alpine
-#     container_name: cart-redis
-#     restart: unless-stopped
-#     volumes:
-#       - cart-redis-data:/data
-
-#     # ---------- Inventory ----------
-#   inventory-service:
-#     build: ./inventory-service
-#     container_name: inventory-service
-#     restart: unless-stopped
-#     ports:
-#       - "4004:4004"
-#     env_file:
-#       - ./inventory-service/.env
-#     environment:
-#       DATABASE_URL: postgresql://postgres:postgres@inventory-postgres:5432/inventory_db?schema=public
-#     depends_on:
-#       - inventory-postgres
-
-#     healthcheck:
-#       test:
-#         [
-#           "CMD",
-#           "node",
-#           "-e",
-#           "require('http').get('http://localhost:4004/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-#         ]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#       start_period: 10s  
-
-#   inventory-postgres:
-#     image: postgres:16-alpine
-#     container_name: inventory-postgres
-#     restart: unless-stopped
-#     environment:
-#       POSTGRES_USER: postgres
-#       POSTGRES_PASSWORD: postgres
-#       POSTGRES_DB: inventory_db
-#     volumes:
-#       - inventory-pg-data:/var/lib/postgresql/data    
-
-
-
-#     # ---------- Order ----------
-#   order-service:
-#     build: ./order-service
-#     container_name: order-service
-#     restart: unless-stopped
-#     ports:
-#     - "4005:4005"
-#     env_file:
-#       - ./order-service/.env
-#     environment:
-#       DATABASE_URL: postgresql://postgres:postgres@order-postgres:5432/order_db?schema=public
-#       INVENTORY_SERVICE_URL: http://inventory-service:4004
-#       CATALOG_SERVICE_URL: http://catalog-service:4002
-#       REDIS_URL: redis://event-redis:6379
-#     depends_on:
-#       - order-postgres
-#       - inventory-service
-#       - catalog-service
-#       - event-redis
-
-#     healthcheck:
-#       test:
-#         [
-#           "CMD",
-#           "node",
-#           "-e",
-#           "require('http').get('http://localhost:4005/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-#         ]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#       start_period: 10s  
-
-#   order-postgres:
-#     image: postgres:16-alpine
-#     container_name: order-postgres
-#     restart: unless-stopped
-#     environment:
-#       POSTGRES_USER: postgres
-#       POSTGRES_PASSWORD: postgres
-#       POSTGRES_DB: order_db
-#     ports:
-#       - "5434:5432" # exposed temporarily for running the migration locally
-#     volumes:
-#       - order-pg-data:/var/lib/postgresql/data    
-
-
-#    # ---------- Payment ----------
-#   payment-service:
-#     build: ./payment-service
-#     container_name: payment-service
-#     ports:
-#     - "4006:4006"
-#     restart: unless-stopped
-#     env_file:
-#       - ./payment-service/.env
-#     environment:
-#       DATABASE_URL: postgresql://postgres:postgres@payment-postgres:5432/payment_db?schema=public
-#       ORDER_SERVICE_URL: http://order-service:4005
-#       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
-#       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
-#       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
-#     depends_on:
-#       - payment-postgres
-#       - order-service
-
-#     healthcheck:
-#       test:
-#         [
-#           "CMD",
-#           "node",
-#           "-e",
-#           "require('http').get('http://localhost:4006/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-#         ]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#       start_period: 10s  
-
-#   payment-postgres:
-#     image: postgres:16-alpine
-#     container_name: payment-postgres
-#     restart: unless-stopped
-#     environment:
-#       POSTGRES_USER: postgres
-#       POSTGRES_PASSWORD: postgres
-#       POSTGRES_DB: payment_db
-#     ports:
-#       - "5435:5432"
-#     volumes:
-#       - payment-pg-data:/var/lib/postgresql/data
-
-#   event-redis:
-#     image: redis:7-alpine
-#     container_name: event-redis
-#     restart: unless-stopped
-#     volumes:
-#       - event-redis-data:/data 
-
-
-#     # ---------- Notification ----------
-#   notification-service:
-#     build: ./notification-service
-#     container_name: notification-service
-#     restart: unless-stopped
-#     ports:
-#       - "4007:4007"
-#     env_file:
-#       - ./notification-service/.env
-#     environment:
-#       DATABASE_URL: postgresql://postgres:postgres@notification-postgres:5432/notification_db?schema=public
-#       REDIS_URL: redis://event-redis:6379
-#       EVENT_STREAM: order-events
-#       CONSUMER_GROUP: notification-group
-#       CONSUMER_NAME: notification-worker-1
-#       RETRY_STREAM: order-events-retry
-#       FAILED_STREAM: order-events-failed
-#       MAX_RETRIES: "3"
-#     depends_on:
-#       - notification-postgres
-#       - event-redis
-
-#     healthcheck:
-#       test:
-#         [
-#           "CMD",
-#           "node",
-#           "-e",
-#           "require('http').get('http://localhost:4007/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-#         ]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#       start_period: 10s  
-
-#   notification-postgres:
-#     image: postgres:16-alpine
-#     container_name: notification-postgres
-#     restart: unless-stopped
-#     environment:
-#       POSTGRES_USER: postgres
-#       POSTGRES_PASSWORD: postgres
-#       POSTGRES_DB: notification_db
-#     ports:
-#       - "5436:5432"
-#     volumes:
-#       - notification-pg-data:/var/lib/postgresql/data     
-    
-
-# volumes:
-#   auth-pg-data:
-#   catalog-mongo-data:
-#   cart-redis-data:
-#   inventory-pg-data:
-#   order-pg-data:
-#   payment-pg-data:
-#   event-redis-data:
-#   notification-pg-data:
-
 services:
   gateway:
     build: ./gateway
@@ -366,6 +46,8 @@ services:
     depends_on:
       auth-postgres:
         condition: service_healthy
+      auth-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -481,6 +163,8 @@ services:
     depends_on:
       inventory-postgres:
         condition: service_healthy
+      inventory-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -524,6 +208,8 @@ services:
     depends_on:
       order-postgres:
         condition: service_healthy
+      order-migrate:
+        condition: service_completed_successfully
       inventory-service:
         condition: service_healthy
       catalog-service:
@@ -574,6 +260,8 @@ services:
     depends_on:
       payment-postgres:
         condition: service_healthy
+      payment-migrate:
+        condition: service_completed_successfully
       order-service:
         condition: service_healthy
     healthcheck:
@@ -635,6 +323,8 @@ services:
     depends_on:
       notification-postgres:
         condition: service_healthy
+      notification-migrate:
+        condition: service_completed_successfully
       event-redis:
         condition: service_healthy
     healthcheck:
@@ -665,6 +355,66 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # ---------- Database migrations ----------
+  # One-shot jobs: each applies its service's Prisma migrations to its own
+  # Postgres, then exits. The matching service waits for it to finish
+  # successfully (service_completed_successfully). Re-running is safe:
+  # `prisma migrate deploy` only applies migrations that are still pending.
+  auth-migrate:
+    build:
+      context: ./auth-service
+      target: migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:?Set DB_USER in root .env}:${DB_PASSWORD:?Set DB_PASSWORD in root .env}@auth-postgres:5432/auth_db?schema=public"
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+
+  inventory-migrate:
+    build:
+      context: ./inventory-service
+      target: migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:?Set DB_USER in root .env}:${DB_PASSWORD:?Set DB_PASSWORD in root .env}@inventory-postgres:5432/inventory_db?schema=public"
+    depends_on:
+      inventory-postgres:
+        condition: service_healthy
+
+  order-migrate:
+    build:
+      context: ./order-service
+      target: migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:?Set DB_USER in root .env}:${DB_PASSWORD:?Set DB_PASSWORD in root .env}@order-postgres:5432/order_db?schema=public"
+    depends_on:
+      order-postgres:
+        condition: service_healthy
+
+  payment-migrate:
+    build:
+      context: ./payment-service
+      target: migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:?Set DB_USER in root .env}:${DB_PASSWORD:?Set DB_PASSWORD in root .env}@payment-postgres:5432/payment_db?schema=public"
+    depends_on:
+      payment-postgres:
+        condition: service_healthy
+
+  notification-migrate:
+    build:
+      context: ./notification-service
+      target: migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:?Set DB_USER in root .env}:${DB_PASSWORD:?Set DB_PASSWORD in root .env}@notification-postgres:5432/notification_db?schema=public"
+    depends_on:
+      notification-postgres:
+        condition: service_healthy
 
 volumes:
   auth-pg-data:

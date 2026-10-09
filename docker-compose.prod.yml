@@ -1,0 +1,117 @@
+# Production hardening layered on top of docker-compose.yml.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# (or put  COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml  in the root .env
+#  and plain `docker compose up -d --build` uses both files.)
+#
+# This file only adds things; the services, networking, healthchecks and
+# migration jobs all live in docker-compose.yml.
+#
+# The CPU / memory numbers below are conservative starting points for a
+# single host. Check `docker stats` under real load and adjust.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Applied to every application container (not the databases).
+x-app: &app
+  init: true                    # tini as PID 1: forwards SIGTERM, reaps zombies
+  stop_grace_period: 20s
+  read_only: true               # root filesystem is immutable at runtime
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 200
+  mem_limit: 384m
+  cpus: 0.75
+  logging: *logging
+
+services:
+  # ---------- application services ----------
+  gateway:
+    <<: *app
+    image: ${REGISTRY:-microservices}/gateway:${IMAGE_TAG:-latest}
+
+  auth-service:
+    <<: *app
+    image: ${REGISTRY:-microservices}/auth-service:${IMAGE_TAG:-latest}
+
+  catalog-service:
+    <<: *app
+    image: ${REGISTRY:-microservices}/catalog-service:${IMAGE_TAG:-latest}
+
+  cart-service:
+    <<: *app
+    image: ${REGISTRY:-microservices}/cart-service:${IMAGE_TAG:-latest}
+
+  inventory-service:
+    <<: *app
+    image: ${REGISTRY:-microservices}/inventory-service:${IMAGE_TAG:-latest}
+
+  order-service:
+    <<: *app
+    image: ${REGISTRY:-microservices}/order-service:${IMAGE_TAG:-latest}
+
+  payment-service:
+    <<: *app
+    image: ${REGISTRY:-microservices}/payment-service:${IMAGE_TAG:-latest}
+
+  notification-service:
+    <<: *app
+    image: ${REGISTRY:-microservices}/notification-service:${IMAGE_TAG:-latest}
+
+  # ---------- migration jobs (one-shot) ----------
+  auth-migrate:
+    image: ${REGISTRY:-microservices}/auth-migrate:${IMAGE_TAG:-latest}
+    logging: *logging
+  inventory-migrate:
+    image: ${REGISTRY:-microservices}/inventory-migrate:${IMAGE_TAG:-latest}
+    logging: *logging
+  order-migrate:
+    image: ${REGISTRY:-microservices}/order-migrate:${IMAGE_TAG:-latest}
+    logging: *logging
+  payment-migrate:
+    image: ${REGISTRY:-microservices}/payment-migrate:${IMAGE_TAG:-latest}
+    logging: *logging
+  notification-migrate:
+    image: ${REGISTRY:-microservices}/notification-migrate:${IMAGE_TAG:-latest}
+    logging: *logging
+
+  # ---------- datastores ----------
+  auth-postgres:
+    logging: *logging
+    mem_limit: 512m
+  inventory-postgres:
+    logging: *logging
+    mem_limit: 512m
+  order-postgres:
+    logging: *logging
+    mem_limit: 512m
+  payment-postgres:
+    logging: *logging
+    mem_limit: 512m
+  notification-postgres:
+    logging: *logging
+    mem_limit: 512m
+
+  catalog-mongo:
+    logging: *logging
+    mem_limit: 1g
+
+  # Redis defaults to in-memory only. Turn on the append-only file so carts
+  # and queued order events survive a container restart.
+  cart-redis:
+    command: ["redis-server", "--appendonly", "yes"]
+    logging: *logging
+    mem_limit: 256m
+  event-redis:
+    command: ["redis-server", "--appendonly", "yes"]
+    logging: *logging
+    mem_limit: 256m

@@ -1,37 +1,48 @@
+FROM node:22-bookworm-slim AS base
 
-FROM node:22-bookworm-slim AS build
-
+# Prisma's query engine needs OpenSSL at build time and at runtime.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --legacy-peer-deps
+# ---------- build: all deps + generated Prisma client ----------
+FROM base AS build
 
-COPY . .
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --no-audit --no-fund
 
+COPY prisma ./prisma
 RUN npx prisma generate
-RUN npm prune --omit=dev
 
-FROM node:22-bookworm-slim AS runtime
+# ---------- migrate: one-shot job (docker compose runs this before the app) ----------
+FROM build AS migrate
 
 ENV NODE_ENV=production
+USER node
+CMD ["npx", "prisma", "migrate", "deploy"]
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl \
-    && rm -rf /var/lib/apt/lists/*
+# ---------- prod-deps: build output minus devDependencies ----------
+FROM build AS prod-deps
 
-WORKDIR /app
+RUN npm prune --omit=dev --legacy-peer-deps
 
-RUN groupadd --system appgroup \
-    && useradd --system --gid appgroup appuser
+# ---------- runtime (default target) ----------
+FROM base AS runtime
 
-COPY --from=build --chown=appuser:appgroup /app ./
+ENV NODE_ENV=production \
+    PORT=4001
 
-USER appuser
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node . .
+
+USER node
 
 EXPOSE 4001
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
+    CMD node -e "require('http').get('http://127.0.0.1:'+process.env.PORT+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
 CMD ["node", "src/index.js"]
