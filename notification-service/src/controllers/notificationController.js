@@ -48,7 +48,7 @@ async function markAllAsRead(req, res, next){
         const userId = req.headers["x-user-id"];
 
         if(!userId){
-            return res.staus(401).json({
+            return res.status(401).json({
                 message: "Authenticated user ID is missing.",
             });
         }

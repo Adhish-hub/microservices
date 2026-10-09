@@ -4,6 +4,7 @@
   "description": "Notification service for ecommerce microservices",
   "main": "src/index.js",
   "scripts": {
+    "test": "jest --runInBand",
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "prisma:generate": "prisma generate",
@@ -16,6 +17,7 @@
     "redis": "^5.8.2"
   },
   "devDependencies": {
+    "jest": "^30.5.2",
     "nodemon": "^3.1.7",
     "prisma": "^5.22.0"
   }

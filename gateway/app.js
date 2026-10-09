@@ -4,6 +4,9 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 
+const swaggerUi = require("swagger-ui-express");
+const openApiSpec = require("./openapi");
+
 const authMiddleware = require("./middlewares/authMiddleware");
 const authorizeRoles = require("./middlewares/roleMiddleware");
 const { apiRateLimiter } = require("./middlewares/rateLimitMiddleware");
@@ -17,6 +20,8 @@ const { createResilientProxy } = require("./middlewares/resilientProxy");
 const errorMiddleware = require("./middlewares/errorMiddleware");
 
 const app = express();
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 /*
 |--------------------------------------------------------------------------

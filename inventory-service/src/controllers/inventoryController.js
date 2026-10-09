@@ -138,7 +138,7 @@ async function reserveStock(req, res, next){
             });
 
             if(existing.length > 0){
-                return{alreadyExists: true, reservation: existing};
+                return{alreadyExists: true, reservations: existing};
             }
 
             for(const {productId, quantity} of items){

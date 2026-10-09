@@ -1,18 +1,37 @@
-# --- Build stage ---
-FROM node:20-slim AS build
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
-COPY package*.json ./
-RUN npm install --legacy-peer-deps
-COPY . .
-RUN npx prisma generate
 
-# --- Run stage ---
-FROM node:20-slim
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+FROM node:22-bookworm-slim AS build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
-COPY --from=build /app ./
+
+COPY package*.json ./
+RUN npm ci --legacy-peer-deps
+
+COPY . .
+
+RUN npx prisma generate
+RUN npm prune --omit=dev
+
+FROM node:22-bookworm-slim AS runtime
+
+ENV NODE_ENV=production
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN groupadd --system appgroup \
+    && useradd --system --gid appgroup appuser
+
+COPY --from=build --chown=appuser:appgroup /app ./
+
 USER appuser
+
 EXPOSE 4004
+
 CMD ["node", "src/index.js"]

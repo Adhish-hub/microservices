@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest --runInBand",
     "start": "node src/index.js",
     "dev": "node --watch src/index.js"
   },
@@ -18,5 +18,8 @@
     "express": "^5.2.1",
     "prisma": "^5.22.0",
     "redis": "^6.3.0"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2"
   }
 }
